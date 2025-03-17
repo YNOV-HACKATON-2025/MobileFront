@@ -4,8 +4,10 @@ import 'widgets/bottom_nav_bar.dart';
 import 'widgets/device_card.dart';
 import 'widgets/category_tab.dart';
 import 'login_page.dart';
+import 'register_page.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized(); // 🔥 Ajoute cette ligne pour initialiser les plugins Flutter
   runApp(SmartHomeApp());
 }
 
