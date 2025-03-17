@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_switch/flutter_switch.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'widgets/bottom_nav_bar.dart';
 import 'widgets/device_card.dart';
 import 'widgets/category_tab.dart';
@@ -30,32 +32,71 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
   String selectedCategory = "Salon";
   double heaterTemperature = 22.0;
 
-  final Map<String, List<Map<String, dynamic>>> roomDevices = {
-    "Salon": [
-      {"name": "Lighting", "details": "10 Spotlights", "status": true, "icon": Icons.lightbulb, "color": Colors.deepPurple},
-      {"name": "Smart TV", "details": "1 device", "status": false, "icon": Icons.tv, "color": Colors.grey},
-      {"name": "LG AC", "details": "2 devices", "status": true, "icon": Icons.ac_unit, "color": Colors.black},
-      {"name": "Heater", "details": "Set temperature", "status": true, "icon": Icons.thermostat, "color": Colors.red},
-    ],
-    "Cuisine": [
-      {"name": "Lighting", "details": "5 Spotlights", "status": false, "icon": Icons.lightbulb, "color": Colors.orange},
-      {"name": "Refrigerator", "details": "1 device", "status": true, "icon": Icons.kitchen, "color": Colors.blue},
-      {"name": "Oven", "details": "1 device", "status": false, "icon": Icons.local_fire_department, "color": Colors.red},
-      {"name": "Heater", "details": "Set temperature", "status": true, "icon": Icons.thermostat, "color": Colors.red},
-    ],
-    "Chambre": [
-      {"name": "Lighting", "details": "3 Spotlights", "status": true, "icon": Icons.lightbulb, "color": Colors.yellow},
-      {"name": "Air Purifier", "details": "1 device", "status": false, "icon": Icons.air, "color": Colors.cyan},
-      {"name": "Smart Clock", "details": "1 device", "status": false, "icon": Icons.access_time, "color": Colors.grey},
-      {"name": "Heater", "details": "Set temperature", "status": true, "icon": Icons.thermostat, "color": Colors.red},
-    ],
-    "Salle de bain": [
-      {"name": "Lighting", "details": "2 Spotlights", "status": false, "icon": Icons.lightbulb, "color": Colors.purple},
-      {"name": "Water Heater", "details": "1 device", "status": true, "icon": Icons.water_damage, "color": Colors.blue},
-      {"name": "Exhaust Fan", "details": "1 device", "status": false, "icon": Icons.wind_power, "color": Colors.black},
-      {"name": "Heater", "details": "Set temperature", "status": true, "icon": Icons.thermostat, "color": Colors.red},
-    ],
-  };
+  Map<String, List<Map<String, dynamic>>> roomDevices = {};
+  Map<String, String> roomNames = {}; // Associer ID -> Nom
+  Map<String, List<Map<String, dynamic>>> sensorsByRoom = {};
+
+  Future<void> fetchRooms() async {
+    var url = Uri.parse('http://localhost:3000/rooms');
+    try {
+      var response = await http.get(url);
+      if (response.statusCode == 200) {
+        List<dynamic> roomsData = jsonDecode(response.body);
+        setState(() {
+          roomDevices.clear();
+          roomNames.clear();
+          Set<String> addedRooms = {}; // Ajout d'un Set pour éviter les doublons
+
+          for (var room in roomsData) {
+            if (!addedRooms.contains(room['id'])) {
+              roomDevices[room['id']] = [];
+              roomNames[room['id']] = room['name'];
+              addedRooms.add(room['id']); // Marque la room comme ajoutée
+            }
+          }
+
+          if (roomDevices.isNotEmpty) {
+            selectedCategory = roomDevices.keys.first;
+          }
+        });
+      } else {
+        print("Erreur lors de la récupération des rooms : ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Erreur réseau : $e");
+    }
+  }
+
+  Future<void> fetchSensors() async {
+    var url = Uri.parse('http://localhost:3000/sensors');
+    try {
+      var response = await http.get(url);
+      if (response.statusCode == 200) {
+        List<dynamic> sensorsData = jsonDecode(response.body);
+        setState(() {
+          sensorsByRoom.clear();
+          for (var sensor in sensorsData) {
+            String roomId = sensor['roomId'];
+            if (!sensorsByRoom.containsKey(roomId)) {
+              sensorsByRoom[roomId] = [];
+            }
+            sensorsByRoom[roomId]!.add(sensor);
+          }
+        });
+      } else {
+        print("Erreur lors de la récupération des capteurs : ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Erreur réseau : $e");
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    fetchRooms();
+    fetchSensors();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,14 +124,24 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: roomDevices.keys.map((room) {
-                      return GestureDetector(
-                        onTap: () => setState(() => selectedCategory = room),
-                        child: CategoryTab(title: room, isActive: selectedCategory == room),
-                      );
-                    }).toList(),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: roomDevices.keys.map((roomId) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: GestureDetector(
+                            onTap: () => setState(() {
+                              selectedCategory = roomId; // Toujours utiliser l'ID pour les sensors
+                            }),
+                            child: CategoryTab(
+                              title: roomNames[roomId] ?? "Unknown", // Affiche le nom de la room
+                              isActive: selectedCategory == roomId,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   Expanded(
@@ -98,20 +149,18 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
                       crossAxisCount: 2,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
-                      children: roomDevices[selectedCategory]!.map((device) {
-                        return DeviceCard(
-                          device["name"],
-                          device["details"],
-                          device["status"],
-                          device["icon"],
-                          device["color"],
-                              (val) {
-                            setState(() {
-                              device["status"] = val;
-                            });
-                          },
-                        );
-                      }).toList(),
+                      children: sensorsByRoom.containsKey(selectedCategory)
+                        ? sensorsByRoom[selectedCategory]!.map((sensor) {
+                            return DeviceCard(
+                              sensor["name"],
+                              sensor["type"],
+                              true, // Par défaut activé
+                              Icons.sensors,
+                              Colors.blue,
+                              (val) {},
+                            );
+                          }).toList()
+                        : [Center(child: Text("Aucun capteur disponible"))],
                     ),
                   ),
                 ],
