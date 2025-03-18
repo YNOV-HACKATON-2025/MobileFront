@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'main.dart'; // Import de la page de redirection après connexion
+import 'smart_home_screen.dart'; // Import de la page de redirection après connexion
 
 class LoginPage extends StatefulWidget {
   @override
