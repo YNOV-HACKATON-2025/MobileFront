@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "914001134860",
+    "project_id": "ynov-hackathon25-gr3",
+    "storage_bucket": "ynov-hackathon25-gr3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:914001134860:android:da0802a3ec18290d7e3529",
+        "android_client_info": {
+          "package_name": "com.example.hackaton"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3lPQgazluVZQ01aVvP35PWSSI_frvYHs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:914001134860:android:a743a72dd450c7857e3529",
+        "android_client_info": {
+          "package_name": "com.hackathonynov25"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3lPQgazluVZQ01aVvP35PWSSI_frvYHs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
