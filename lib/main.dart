@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_switch/flutter_switch.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'widgets/bottom_nav_bar.dart';
 import 'widgets/device_card.dart';
 import 'widgets/category_tab.dart';
 import 'login_page.dart';
-import 'register_page.dart';
+import 'package:mqtt_client/mqtt_client.dart';
+import 'package:mqtt_client/mqtt_server_client.dart';
+import 'dart:convert';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized(); // 🔥 Ajoute cette ligne pour initialiser les plugins Flutter
@@ -35,6 +35,42 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
   Map<String, List<Map<String, dynamic>>> roomDevices = {};
   Map<String, String> roomNames = {}; // Associer ID -> Nom
   Map<String, List<Map<String, dynamic>>> sensorsByRoom = {};
+  late MqttServerClient client;
+
+  Future<void> connectToMqtt() async {
+    client = MqttServerClient(
+        '46eccffd0ebc4eb8b5a2ef13663c1c28.s1.eu.hivemq.cloud', ''
+    );
+    client.port = 8883;
+    client.secure = true;
+    client.logging(on: false);
+
+    final connMessage = MqttConnectMessage()
+        .withClientIdentifier('flutter_client')
+        .authenticateAs('Ynov-2025', 'Ynov-2025')
+        .startClean();
+
+    client.connectionMessage = connMessage;
+
+    try {
+      await client.connect();
+      print('✅ MQTT Connected');
+    } catch (e) {
+      print('❌ MQTT Connection failed: $e');
+      return;
+    }
+
+    client.subscribe('#', MqttQos.atMostOnce); // Abonnement à tous les topics
+
+    client.updates!.listen((List<MqttReceivedMessage<MqttMessage>> messages) {
+      final recMessage = messages[0].payload as MqttPublishMessage;
+      final payload = MqttPublishPayload.bytesToStringAsString(recMessage.payload.message);
+      print('📩 MQTT Message reçu: ${messages[0].topic} -> $payload');
+
+      final sensorData = jsonDecode(payload);
+      updateSensorData(sensorData);
+    });
+  }
 
   Future<void> fetchRooms() async {
     var url = Uri.parse('http://localhost:3000/rooms');
@@ -91,11 +127,27 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
     }
   }
 
+  void updateSensorData(Map<String, dynamic> sensorData) {
+    String sensorId = sensorData['sensorId'];
+
+    setState(() {
+      sensorsByRoom.forEach((roomId, sensors) {
+        for (var sensor in sensors) {
+          if (sensor['id'] == sensorId) {
+            sensor['value'] = sensorData['value'];
+            sensor['unit'] = sensorData['unit'];
+          }
+        }
+      });
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     fetchRooms();
     fetchSensors();
+    connectToMqtt(); // Connexion au broker MQTT
   }
 
   @override
@@ -150,17 +202,18 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
                       children: sensorsByRoom.containsKey(selectedCategory)
-                        ? sensorsByRoom[selectedCategory]!.map((sensor) {
-                            return DeviceCard(
-                              sensor["name"],
-                              sensor["type"],
-                              true, // Par défaut activé
-                              Icons.sensors,
-                              Colors.blue,
+                          ? sensorsByRoom[selectedCategory]!.map((sensor) {
+                        return DeviceCard(
+                          sensor["name"],
+                          sensor["type"],
+                          true, // Par défaut activé
+                          Icons.sensors,
+                          Colors.blue,
                               (val) {},
-                            );
-                          }).toList()
-                        : [Center(child: Text("Aucun capteur disponible"))],
+                          sensor.containsKey("value") ? "${sensor["value"]} ${sensor["unit"]}" : null, // Ajout de la valeur du capteur
+                        );
+                      }).toList()
+                          : [Center(child: Text("Aucun capteur disponible"))],
                     ),
                   ),
                 ],

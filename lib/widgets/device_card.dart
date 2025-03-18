@@ -8,8 +8,9 @@ class DeviceCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final Function(bool) onToggle;
+  final String? sensorValue; // Ajout d'une variable optionnelle
 
-  DeviceCard(this.title, this.subtitle, this.status, this.icon, this.color, this.onToggle);
+  DeviceCard(this.title, this.subtitle, this.status, this.icon, this.color, this.onToggle, [this.sensorValue]);
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +27,8 @@ class DeviceCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           Text(subtitle, style: const TextStyle(color: Colors.grey)),
+          if (sensorValue != null)
+            Text(sensorValue!, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
           const Spacer(),
           Align(
             alignment: Alignment.bottomRight,
