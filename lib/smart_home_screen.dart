@@ -10,6 +10,8 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:http_parser/http_parser.dart';
+
 
 void main() {
   runApp(SmartHomeApp());
@@ -58,11 +60,12 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
     }
 
     Directory tempDir = await getTemporaryDirectory();
-    _filePath = '${tempDir.path}/recording.aac';
+    _filePath = '${tempDir.path}/recording.m4a';  // 📌 Enregistre en `.m4a`
 
-    await _recorder!.startRecorder(toFile: _filePath, codec: Codec.aacADTS);
+    await _recorder!.startRecorder(toFile: _filePath, codec: Codec.aacMP4); // 📌 `Codec.aacMP4`
     setState(() => _isRecording = true);
   }
+
 
   Future<void> _stopRecording() async {
     await _recorder!.stopRecorder();
@@ -73,15 +76,19 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
       // ✅ Envoi vers le serveur et copie locale simultanément
       await Future.wait([
         _uploadAudio(_filePath!),  // Envoi du fichier au serveur
-        _copyToDownloads(_filePath!), // Copie dans `/Download/`
       ]);
     }
   }
 
   Future<void> _uploadAudio(String filePath) async {
-    var url = Uri.parse('http://localhost:3000/speech/transcribe');
+    var url = Uri.parse('http://10.70.4.83:3000/speech/transcribe');  // Remplace par l'IP de ton PC si nécessaire
+    print("test");
     var request = http.MultipartRequest('POST', url);
-    request.files.add(await http.MultipartFile.fromPath('audio', filePath));
+    request.files.add(await http.MultipartFile.fromPath(
+      'audio',
+      filePath,
+      contentType: MediaType('audio', 'mpeg'),  // 📌 Utilise `audio/mpeg` pour MP3
+    ));
 
     try {
       var response = await request.send();
@@ -103,16 +110,6 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
         _transcription = "Erreur de connexion au serveur.";
       });
       print("❌ Erreur d'envoi : $e");
-    }
-  }
-
-  Future<void> _copyToDownloads(String filePath) async {
-    String newPath = "/storage/emulated/0/Download/recording.aac";
-    try {
-      await File(filePath).copy(newPath);
-      print("✅ Fichier copié dans : $newPath");
-    } catch (e) {
-      print("❌ Erreur de copie dans Download : $e");
     }
   }
 

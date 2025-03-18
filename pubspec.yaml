@@ -39,6 +39,7 @@ dependencies:
   mqtt_client: ^9.8.1
   flutter_sound: ^9.2.13
   permission_handler: ^11.0.1
+  http_parser: ^4.0.2
 
 dev_dependencies:
   flutter_test:
