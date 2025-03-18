@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'main.dart'; // Import de la page de redirection après connexion
+import 'smart_home_screen.dart'; // Import de la page de redirection après connexion
 
 class LoginPage extends StatefulWidget {
   @override
@@ -30,7 +30,7 @@ class _LoginPageState extends State<LoginPage> {
       if (response.statusCode == 200 || response.statusCode == 201) {
         var data = jsonDecode(response.body);
 
-        // ✅ Vérifier si le token JWT est dans la bonne structure
+        // Vérifier si le token JWT est dans la bonne structure
         if (data.containsKey("user") &&
             data["user"].containsKey("stsTokenManager") &&
             data["user"]["stsTokenManager"].containsKey("accessToken")) {
@@ -46,7 +46,7 @@ class _LoginPageState extends State<LoginPage> {
           String? savedToken = await storage.read(key: "token");
           print("Token récupéré : $savedToken");
 
-          // 2️⃣ Redirection vers la HomePage
+          // Redirection vers la HomePage
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => SmartHomeApp()),

@@ -1,5 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+// MAXIME
+import 'smart_home_screen.dart';
+void main() {
+  WidgetsFlutterBinding.ensureInitialized(); // Initialiser les plugins Flutter
+  runApp(const SmartHomeApp());
+// MAXIME2.0
 import 'package:http/http.dart' as http;
 import 'package:typed_data/src/typed_buffer.dart';
 import 'dart:convert';
@@ -12,7 +18,7 @@ import 'package:mqtt_client/mqtt_server_client.dart';
 import 'widgets/light_device_card.dart';
 import 'widgets/radiator_device_card.dart';
 import 'package:firebase_core/firebase_core.dart';
-
+//END
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,10 +32,15 @@ void main() async {
 
 
 class SmartHomeApp extends StatelessWidget {
+  const SmartHomeApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      title: 'Smart Home App',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
       home: SmartHomeScreen(),
     );
   }
@@ -540,6 +551,7 @@ Future<void> updateRoomTemperature(double value) async {
           ],
         ),
       ),
+      home: SmartHomeScreen(),
     );
   }
 }
