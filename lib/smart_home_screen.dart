@@ -33,11 +33,7 @@ class SmartHomeScreen extends StatefulWidget {
 class _SmartHomeScreenState extends State<SmartHomeScreen> {
   String selectedCategory = "Salon";
   double heaterTemperature = 22.0;
-
-  Map<String, List<Map<String, dynamic>>> roomDevices = {};
-  Map<String, String> roomNames = {};
-  Map<String, List<Map<String, dynamic>>> sensorsByRoom = {};
-  late MqttServerClient client;
+  String _transcription = "Appuyez sur le micro pour parler...";
 
   FlutterSoundRecorder? _recorder;
   bool _isRecording = false;
@@ -46,9 +42,6 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
   @override
   void initState() {
     super.initState();
-    fetchRooms();
-    fetchSensors();
-    connectToMqtt();
     _recorder = FlutterSoundRecorder();
     _initRecorder();
   }
@@ -75,117 +68,58 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
     await _recorder!.stopRecorder();
     setState(() => _isRecording = false);
     print("✅ Enregistrement terminé : $_filePath");
+
+    if (_filePath != null) {
+      // ✅ Envoi vers le serveur et copie locale simultanément
+      await Future.wait([
+        _uploadAudio(_filePath!),  // Envoi du fichier au serveur
+        _copyToDownloads(_filePath!), // Copie dans `/Download/`
+      ]);
+    }
+  }
+
+  Future<void> _uploadAudio(String filePath) async {
+    var url = Uri.parse('http://localhost:3000/speech/transcribe');
+    var request = http.MultipartRequest('POST', url);
+    request.files.add(await http.MultipartFile.fromPath('audio', filePath));
+
+    try {
+      var response = await request.send();
+      if (response.statusCode == 200) {
+        var responseBody = await response.stream.bytesToString();
+        var jsonResponse = jsonDecode(responseBody);
+        setState(() {
+          _transcription = jsonResponse['transcription'] ?? "Transcription échouée.";
+        });
+        print("✅ Audio transcrit : $_transcription");
+      } else {
+        setState(() {
+          _transcription = "Erreur lors de la transcription.";
+        });
+        print("❌ Échec de la transcription : ${response.statusCode}");
+      }
+    } catch (e) {
+      setState(() {
+        _transcription = "Erreur de connexion au serveur.";
+      });
+      print("❌ Erreur d'envoi : $e");
+    }
+  }
+
+  Future<void> _copyToDownloads(String filePath) async {
+    String newPath = "/storage/emulated/0/Download/recording.aac";
+    try {
+      await File(filePath).copy(newPath);
+      print("✅ Fichier copié dans : $newPath");
+    } catch (e) {
+      print("❌ Erreur de copie dans Download : $e");
+    }
   }
 
   @override
   void dispose() {
     _recorder!.closeRecorder();
     super.dispose();
-  }
-
-  Future<void> connectToMqtt() async {
-    client = MqttServerClient(
-        '46eccffd0ebc4eb8b5a2ef13663c1c28.s1.eu.hivemq.cloud', ''
-    );
-    client.port = 8883;
-    client.secure = true;
-    client.logging(on: false);
-
-    final connMessage = MqttConnectMessage()
-        .withClientIdentifier('flutter_client')
-        .authenticateAs('Ynov-2025', 'Ynov-2025')
-        .startClean();
-
-    client.connectionMessage = connMessage;
-
-    try {
-      await client.connect();
-      print('MQTT Connected');
-    } catch (e) {
-      print('MQTT Connection failed: $e');
-      return;
-    }
-
-    client.subscribe('#', MqttQos.atMostOnce);
-
-    client.updates!.listen((List<MqttReceivedMessage<MqttMessage>> messages) {
-      final recMessage = messages[0].payload as MqttPublishMessage;
-      final payload = MqttPublishPayload.bytesToStringAsString(recMessage.payload.message);
-      print('MQTT Message reçu: ${messages[0].topic} -> $payload');
-
-      final sensorData = jsonDecode(payload);
-      updateSensorData(sensorData);
-    });
-  }
-
-  Future<void> fetchRooms() async {
-    var url = Uri.parse('http://localhost:3000/rooms');
-    try {
-      var response = await http.get(url);
-      if (response.statusCode == 200) {
-        List<dynamic> roomsData = jsonDecode(response.body);
-        setState(() {
-          roomDevices.clear();
-          roomNames.clear();
-          Set<String> addedRooms = {};
-
-          for (var room in roomsData) {
-            if (!addedRooms.contains(room['id'])) {
-              roomDevices[room['id']] = [];
-              roomNames[room['id']] = room['name'];
-              addedRooms.add(room['id']);
-            }
-          }
-
-          if (roomDevices.isNotEmpty) {
-            selectedCategory = roomDevices.keys.first;
-          }
-        });
-      } else {
-        print("Erreur lors de la récupération des rooms : ${response.statusCode}");
-      }
-    } catch (e) {
-      print("Erreur réseau : $e");
-    }
-  }
-
-  Future<void> fetchSensors() async {
-    var url = Uri.parse('http://localhost:3000/sensors');
-    try {
-      var response = await http.get(url);
-      if (response.statusCode == 200) {
-        List<dynamic> sensorsData = jsonDecode(response.body);
-        setState(() {
-          sensorsByRoom.clear();
-          for (var sensor in sensorsData) {
-            String roomId = sensor['roomId'];
-            if (!sensorsByRoom.containsKey(roomId)) {
-              sensorsByRoom[roomId] = [];
-            }
-            sensorsByRoom[roomId]!.add(sensor);
-          }
-        });
-      } else {
-        print("Erreur lors de la récupération des capteurs : ${response.statusCode}");
-      }
-    } catch (e) {
-      print("Erreur réseau : $e");
-    }
-  }
-
-  void updateSensorData(Map<String, dynamic> sensorData) {
-    String sensorId = sensorData['sensorId'];
-
-    setState(() {
-      sensorsByRoom.forEach((roomId, sensors) {
-        for (var sensor in sensors) {
-          if (sensor['id'] == sensorId) {
-            sensor['value'] = sensorData['value'];
-            sensor['unit'] = sensorData['unit'];
-          }
-        }
-      });
-    });
   }
 
   @override
@@ -200,7 +134,25 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
         ),
       ),
-      body: const Center(child: Text("Bienvenue sur SmartHome")),
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(height: 20),
+
+          // 🔹 Ajout de la transcription au-dessus de "Bienvenue sur SmartHome"
+          Text(
+            "🗣️ $_transcription",
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+
+          const SizedBox(height: 20),
+
+          // 🔹 Garde le texte original
+          const Center(child: Text("Bienvenue sur SmartHome")),
+        ],
+      ),
+
       bottomNavigationBar: BottomAppBar(
         shape: const CircularNotchedRectangle(),
         notchMargin: 10,
