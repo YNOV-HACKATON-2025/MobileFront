@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'main.dart';
-import 'widgets/bottom_nav_bar.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'main.dart'; // Import de la page de redirection après connexion
 
 class LoginPage extends StatefulWidget {
   @override
@@ -12,102 +14,107 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController passwordController = TextEditingController();
   bool isPasswordVisible = false;
 
+  Future<void> login() async {
+    var url = Uri.parse('http://localhost:3000/authentification/login'); // Modification ici pour pointer vers /login
+
+    try {
+      var response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": emailController.text,
+          "password": passwordController.text,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        var data = jsonDecode(response.body);
+
+        // ✅ Vérifier si le token JWT est dans la bonne structure
+        if (data.containsKey("user") &&
+            data["user"].containsKey("stsTokenManager") &&
+            data["user"]["stsTokenManager"].containsKey("accessToken")) {
+          String token = data["user"]["stsTokenManager"]["accessToken"];
+
+          // 1️⃣ Stocker le token JWT localement
+          final storage = FlutterSecureStorage();
+
+          // Stocker le token
+          await storage.write(key: "token", value: token);
+
+          // Vérifier si le token est bien stocké
+          String? savedToken = await storage.read(key: "token");
+          print("Token récupéré : $savedToken");
+
+          // 2️⃣ Redirection vers la HomePage
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => SmartHomeApp()),
+          );
+        } else {
+          print("Erreur : Aucun token JWT reçu du serveur.");
+
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: Text("Erreur de connexion"),
+                content: Text("Le serveur n'a pas renvoyé de token."),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: Text("OK"),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+      } else {
+        print("Erreur de connexion : ${response.statusCode} - ${response.body}");
+      }
+    } catch (e) {
+      print("Erreur réseau : $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.grey[100],
-        title: const Text(
-          "Login",
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
-        ),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Welcome Back",
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "Login to continue",
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              const SizedBox(height: 32),
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: "Email",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.email),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: passwordController,
-                obscureText: !isPasswordVisible,
-                decoration: InputDecoration(
-                  labelText: "Password",
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.lock),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        isPasswordVisible = !isPasswordVisible;
-                      });
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
+      appBar: AppBar(title: Text("Connexion")),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: emailController,
+              decoration: InputDecoration(labelText: "Email"),
+            ),
+            TextField(
+              controller: passwordController,
+              obscureText: !isPasswordVisible,
+              decoration: InputDecoration(
+                labelText: "Mot de passe",
+                suffixIcon: IconButton(
+                  icon: Icon(isPasswordVisible ? Icons.visibility : Icons.visibility_off),
                   onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => SmartHomeScreen()),
-                    );
+                    setState(() {
+                      isPasswordVisible = !isPasswordVisible;
+                    });
                   },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text("Login", style: TextStyle(fontSize: 18)),
                 ),
               ),
-              const SizedBox(height: 16),
-              Center(
-                child: GestureDetector(
-                  onTap: () {
-                    // Action for forgot password
-                  },
-                  child: const Text(
-                    "Forgot Password?",
-                    style: TextStyle(
-                      color: Colors.blue,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: login,
+              child: Text("Se connecter"),
+            ),
+          ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(),
     );
   }
 }
