@@ -470,26 +470,126 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
           "Hi Arpan",
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
         ),
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(height: 20),
-
-          // 🔹 Ajout de la transcription au-dessus de "Bienvenue sur SmartHome"
-          Text(
-            "🗣️ $_transcription",
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.black),
+            onPressed: () {},
           ),
-
-          const SizedBox(height: 20),
-
-          // 🔹 Garde le texte original
-          const Center(child: Text("Bienvenue sur SmartHome")),
         ],
       ),
-
+      body: Column(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: roomDevices.keys.map((roomId) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: GestureDetector(
+                            onTap: () => setState(() {
+                              selectedCategory = roomId; // Toujours utiliser l'ID pour les sensors
+                            }),
+                            child: CategoryTab(
+                              title: roomNames[roomId] ?? "Unknown", // Affiche le nom de la room
+                              isActive: selectedCategory == roomId,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: GridView.count(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                      children: sensorsByRoom.containsKey(selectedCategory)
+                          ? sensorsByRoom[selectedCategory]!.map((sensor) {
+                        if (sensor["type"] == "light") {
+                          return LightDeviceCard(
+                              sensor["id"],
+                              sensor["name"],
+                              sensor["value"] == 1,
+                              Colors.yellow,
+                                  (newValue) {
+                                setState(() {
+                                  sensor["value"] = newValue ? 1 : 0;
+                                });
+                              },
+                              client,
+                              sensor["topic"]
+                          );
+                        } else if (sensor["type"] == "radiator") {
+                          return RadiatorDeviceCard(
+                              sensor["topic"],
+                              sensor["name"],
+                              double.tryParse(sensor["value"].toString()) ?? 20.0,  // ✅ Correction ici
+                              sensor["status"] == 1,
+                              Colors.redAccent,
+                                  (newValue) {
+                                setState(() {
+                                  sensor["status"] = newValue ? 1 : 0;
+                                });
+                              },
+                              client
+                          );
+                        } else {
+                          return DeviceCard(
+                            sensor["name"],
+                            sensor["type"],
+                            true,
+                            Icons.sensors,
+                            Colors.blue,
+                            sensor.containsKey("unit") && sensor["unit"] != null
+                                ? "${double.tryParse(sensor["value"].toString()) ?? 0} ${sensor["unit"].toString().replaceAll("Â", "").trim()}"
+                                : "${double.tryParse(sensor["value"].toString()) ?? 0}", // ✅ Correction ici
+                          );
+                        }
+                      }).toList()
+                          : [Center(child: Text("Aucun capteur disponible"))],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (sensorsByRoom[selectedCategory]?.any((sensor) => sensor["type"] == "radiator") ?? false)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5)],
+              ),
+              child: Column(
+                children: [
+                  const Text("Adjust Heater Temperature", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Slider(
+                    value: heaterTemperature,
+                    min: 16,
+                    max: 30,
+                    divisions: 14,
+                    label: heaterTemperature.round().toString(),
+                    onChanged: (double value) {
+                      setState(() {
+                        heaterTemperature = value;
+                      });
+                      updateRoomTemperature(value);
+                    },
+                  ),
+                  Text("${heaterTemperature.round()}°C", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+        ],
+      ),
       bottomNavigationBar: BottomAppBar(
         shape: const CircularNotchedRectangle(),
         notchMargin: 10,
@@ -509,8 +609,9 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
               backgroundColor: Colors.white,
               elevation: 5,
               child: Icon(_isRecording ? Icons.stop : Icons.mic, size: 28),
+
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 30),
             IconButton(
               icon: const Icon(Icons.person, size: 30),
               onPressed: () {
