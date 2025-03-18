@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_switch/flutter_switch.dart';
 
-class DeviceCard extends StatelessWidget {
+class SpeakerDeviceCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool status;
-  final IconData icon;
   final Color color;
   final String? sensorValue;
 
-  DeviceCard(this.title, this.subtitle, this.status, this.icon, this.color, [this.sensorValue]);
+  SpeakerDeviceCard(this.title, this.status, this.color, this.subtitle, [this.sensorValue]);
 
   @override
   Widget build(BuildContext context) {
@@ -22,10 +20,10 @@ class DeviceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 40, color: status ? color : Colors.grey),
+          Icon(Icons.speaker, size: 40, color: status ? color : Colors.grey),
           const SizedBox(height: 10),
           Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          Text(subtitle, style: const TextStyle(color: Colors.grey)),
+          const Text("Enceinte", style: TextStyle(color: Colors.grey)),
           if (sensorValue != null)
             Text(sensorValue ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
         ],

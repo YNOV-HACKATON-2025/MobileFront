@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'smart_home_screen.dart'; // Import de la page de redirection après connexion
+import 'smart_home_screen.dart';
 
 class LoginPage extends StatefulWidget {
   @override
@@ -15,7 +15,7 @@ class _LoginPageState extends State<LoginPage> {
   bool isPasswordVisible = false;
 
   Future<void> login() async {
-    var url = Uri.parse('http://localhost:3000/authentification/login'); // Modification ici pour pointer vers /login
+    var url = Uri.parse('https://hackathon.vanhovev.com/authentification/login');
 
     try {
       var response = await http.post(
@@ -30,19 +30,19 @@ class _LoginPageState extends State<LoginPage> {
       if (response.statusCode == 200 || response.statusCode == 201) {
         var data = jsonDecode(response.body);
 
-        // Vérifier si le token JWT est dans la bonne structure
+
         if (data.containsKey("user") &&
             data["user"].containsKey("stsTokenManager") &&
             data["user"]["stsTokenManager"].containsKey("accessToken")) {
           String token = data["user"]["stsTokenManager"]["accessToken"];
 
-          // 1️⃣ Stocker le token JWT localement
+
           final storage = FlutterSecureStorage();
 
           // Stocker le token
           await storage.write(key: "token", value: token);
 
-          // Vérifier si le token est bien stocké
+
           String? savedToken = await storage.read(key: "token");
           print("Token récupéré : $savedToken");
 

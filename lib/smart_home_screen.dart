@@ -4,6 +4,7 @@ import 'package:typed_data/src/typed_buffer.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'widgets/device_card.dart';
+import 'widgets/speaker_device_card.dart';
 import 'widgets/category_tab.dart';
 import 'login_page.dart';
 import 'package:mqtt_client/mqtt_client.dart';
@@ -17,6 +18,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:http_parser/http_parser.dart';
+import 'widgets/camera_device_card.dart';
+import 'widgets/fan_device_card.dart';
 
 void main() {
   runApp(SmartHomeApp());
@@ -48,7 +51,9 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
 
   Map<String, List<Map<String, dynamic>>> roomDevices = {};
   Map<String, String> roomNames = {}; // Associer ID -> Nom
+  Map<String, String> roomTopics = {}; // Associer ID -> Topic
   Map<String, List<Map<String, dynamic>>> sensorsByRoom = {};
+  Map<String, double> roomTemperatures = {};
   late MqttServerClient client;
 
 
@@ -59,8 +64,6 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
     _initRecorder();
     fetchRooms().then((_) {
       fetchSensors().then((_) {
-        listenForNewSensors(); // 🔥 Maintenant, ça s'exécute après le chargement initial des sensors
-        // ✅ S'assurer que `selectedCategory` a un nom valide
         if (roomNames.containsValue("Salon")) {
           setState(() {
             selectedCategory = roomNames.entries.firstWhere((entry) => entry.value == "Salon", orElse: () => MapEntry("", "Salon")).key;
@@ -87,18 +90,24 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
           if (newSensor != null) {
             String? roomId = newSensor['roomId'];
             if (roomId == null || roomId.isEmpty) {
-              print("⚠️ Capteur détecté sans roomId valide : ${newSensor['name']}");
-              return; // Évite d'ajouter un capteur sans roomId
+              print("Capteur détecté sans roomId valide : ${newSensor['name'] ?? "Inconnu"}");
+              continue;
             }
 
             setState(() {
               sensorsByRoom.putIfAbsent(roomId, () => []);
-              sensorsByRoom[roomId]!.add(newSensor);
+              sensorsByRoom[roomId]!.add({
+                "id": newSensor["id"] ?? "unknown_id",
+                "name": newSensor["name"] ?? "Capteur inconnu",
+                "type": newSensor["type"] ?? "unknown",
+                "value": newSensor["value"] ?? 20.0,
+                "unit": newSensor["unit"] ?? "",
+                "roomId": roomId,
+              });
             });
 
-            // ✅ Vérifie si le nom de la room existe avant d'afficher
             String roomName = roomNames[roomId] ?? "Room inconnue";
-            print("🆕 Nouveau capteur détecté : ${newSensor['name']} ajouté à la room $roomName");
+            print("Nouveau capteur détecté : ${newSensor['name'] ?? "Inconnu"} ajouté à la room $roomName");
           }
         }
       }
@@ -122,31 +131,31 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
 
     try {
       await client.connect();
-      print('✅ MQTT Connected');
-      fetchInitialSensorValues(); // Exécute directement sans délai
+      print('MQTT Connected');
+      fetchInitialSensorValues();
     } catch (e) {
-      print('❌ MQTT Connection failed: $e');
+      print('MQTT Connection failed: $e');
       return;
     }
 
-    client.subscribe('#', MqttQos.atMostOnce); // Abonnement à tous les topics
+    client.subscribe('#', MqttQos.atMostOnce);
 
     client.updates!.listen((List<MqttReceivedMessage<MqttMessage>> messages) {
       final recMessage = messages[0].payload as MqttPublishMessage;
       final payload = MqttPublishPayload.bytesToStringAsString(recMessage.payload.message);
-      print('📩 MQTT Message reçu: ${messages[0].topic} -> $payload');
+      print('MQTT Message reçu: ${messages[0].topic} -> $payload');
 
       try {
         final sensorData = jsonDecode(payload);
         updateSensorData(sensorData);
       } catch (e) {
-        print("⚠️ Ignoré : Message non JSON reçu sur MQTT -> $payload");
+        print("Ignoré : Message non JSON reçu sur MQTT -> $payload");
       }
     });
   }
 
   Future<void> fetchInitialSensorValues() async {
-    var url = Uri.parse('http://localhost:3000/sensors');
+    var url = Uri.parse('https://hackathon.vanhovev.com/sensors');
     try {
       var response = await http.get(url);
       if (response.statusCode == 200) {
@@ -161,17 +170,17 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
             sensorsByRoom[roomId]!.add(sensor);
           }
         });
-        print("✅ Valeurs initiales des capteurs chargées depuis l'API");
+        print("Valeurs initiales des capteurs chargées depuis l'API");
       } else {
-        print("❌ Erreur lors de la récupération des capteurs : ${response.statusCode}");
+        print("Erreur lors de la récupération des capteurs : ${response.statusCode}");
       }
     } catch (e) {
-      print("❌ Erreur réseau : $e");
+      print("Erreur réseau : $e");
     }
   }
 
   Future<void> fetchRooms() async {
-    var url = Uri.parse('http://localhost:3000/rooms');
+    var url = Uri.parse('https://hackathon.vanhovev.com/rooms');
     try {
       var response = await http.get(url);
       if (response.statusCode == 200) {
@@ -179,19 +188,27 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
         setState(() {
           roomDevices.clear();
           roomNames.clear();
-          Set<String> addedRooms = {}; // Ajout d'un Set pour éviter les doublons
+          roomTemperatures.clear();
+          Set<String> addedRooms = {};
 
           for (var room in roomsData) {
             if (!addedRooms.contains(room['id'])) {
               roomDevices[room['id']] = [];
-              roomNames[room['id']] = room['name'];
-              addedRooms.add(room['id']); // Marque la room comme ajoutée
+            roomNames[room['id']] = room['name'];
+            roomTopics[room['id']] = room['topic'] ?? "default_topic";
+              addedRooms.add(room['id']);
+
+              double roomTemp = double.tryParse(room["temperature"].toString()) ?? 20.0;
+              roomTemperatures[room['id']] = roomTemp;
             }
           }
 
           if (roomDevices.isNotEmpty) {
-            selectedCategory = roomNames.isNotEmpty ? roomNames.values.first : "UnknownRoom";
+            selectedCategory = roomNames.isNotEmpty ? roomNames.keys.first : "UnknownRoom";
           }
+
+          // Assigne la température correcte pour la pièce sélectionnée
+          heaterTemperature = roomTemperatures[selectedCategory] ?? 20.0;
         });
       } else {
         print("Erreur lors de la récupération des rooms : ${response.statusCode}");
@@ -202,7 +219,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
   }
 
   Future<void> fetchSensors() async {
-    var url = Uri.parse('http://localhost:3000/sensors');
+    var url = Uri.parse('https://hackathon.vanhovev.com/sensors');
     try {
       var response = await http.get(url);
       if (response.statusCode == 200) {
@@ -232,6 +249,16 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
       sensorsByRoom.forEach((roomId, sensors) {
         for (var sensor in sensors) {
           if (sensor['id'] == sensorId) {
+            if (sensor["type"] == "radiator") {
+              if (sensorData.containsKey("temperature")) {
+                sensor["temperature"] = double.tryParse(sensorData["temperature"].toString()) ?? 20.0;
+              }
+              if (sensorData.containsKey("value")) {
+                sensor["status"] = sensorData["value"] == 1; // ✅ Toujours booléen !
+              }
+            } else {
+              sensor["value"] = double.tryParse(sensorData["value"].toString()) ?? 0.0;
+            }
             sensor['value'] = double.tryParse(sensorData['value'].toString()) ?? 0.0; // ✅ Correction ici
             sensor['unit'] = sensorData.containsKey('unit') ? sensorData['unit'] : '';
           }
@@ -244,7 +271,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
   }
 
   Future<void> updateSensorInDatabase(Map<String, dynamic> sensorData) async {
-    var url = Uri.parse('http://localhost:3000/sensors/${sensorData['sensorId']}');
+    var url = Uri.parse('https://hackathon.vanhovev.com/sensors/${sensorData['sensorId']}');
 
     try {
       var response = await http.put(
@@ -257,133 +284,47 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
       );
 
       if (response.statusCode == 200) {
-        print("✅ Valeur du capteur ${sensorData['sensorId']} mise à jour dans la base");
+        print("Valeur du capteur ${sensorData['sensorId']} mise à jour dans la base");
       } else {
-        print("❌ Erreur mise à jour capteur ${sensorData['sensorId']} : ${response.statusCode}");
+        print("Erreur mise à jour capteur ${sensorData['sensorId']} : ${response.statusCode}");
       }
     } catch (e) {
-      print("❌ Erreur réseau lors de la mise à jour du capteur : $e");
+      print("Erreur réseau lors de la mise à jour du capteur : $e");
     }
   }
 
   Future<void> updateRoomTemperature(double value) async {
+    setState(() {
+      heaterTemperature = value;
+      roomTemperatures[selectedCategory] = value;
+    });
+
+    var url = Uri.parse('https://hackathon.vanhovev.com/rooms/$selectedCategory');
     try {
-      // Mettre à jour la température dans la base de données via l'API backend NestJS
-      var url = Uri.parse('http://localhost:3000/rooms/$selectedCategory');
-      try {
-        var response = await http.put(
-          url,
-          headers: {"Content-Type": "application/json"},
-          body: jsonEncode({"temperature": value}),
+      var response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"temperature": value}),
+      );
+
+      if (response.statusCode == 200) {
+        print("Température de la room $selectedCategory mise à jour dans la base");
+        final builder = MqttClientPayloadBuilder();
+        builder.addString(jsonEncode({
+          "roomId": selectedCategory,
+          "temperature": value
+        }));
+        client.publishMessage(
+          "${roomTopics[selectedCategory]}/temperature",
+          MqttQos.atLeastOnce,
+          builder.payload!
         );
-        if (response.statusCode == 200) {
-          print("✅ Température de la room $selectedCategory mise à jour dans la base");
-          final roomPayload = utf8.encode(jsonEncode({
-            "roomId": selectedCategory,
-            "temperature": value
-          }));
-
-          String roomName = roomNames[selectedCategory] ?? "UnknownRoom";
-          client.publishMessage(
-              "$roomName/temperature", // Respecte le format demandé
-              MqttQos.atLeastOnce,
-              Uint8Buffer()..addAll(Uint8List.fromList(utf8.encode(jsonEncode({
-                "roomName": roomName,
-                "sensorName": "room",
-                "type": "temperature",
-                "value": value
-              }))))
-          );
-
-          print("📩 MQTT Message envoyé: $selectedCategory/temperature -> $value");
-
-          // Mettre à jour la température de tous les radiateurs dans la pièce
-          if (sensorsByRoom.containsKey(selectedCategory)) {
-            for (var sensor in sensorsByRoom[selectedCategory]!) {
-              if (sensor["type"] == "radiator") {
-                String radiatorId = sensor["id"];
-
-                // Mise à jour via API backend NestJS
-                var sensorUrl = Uri.parse('http://localhost:3000/sensors/$radiatorId');
-                var sensorResponse = await http.put(
-                  sensorUrl,
-                  headers: {"Content-Type": "application/json"},
-                  body: jsonEncode({"value": value}),
-                );
-                if (sensorResponse.statusCode == 200) {
-                  print("✅ Température du radiateur $radiatorId mise à jour dans la base");
-                } else {
-                  print("❌ Erreur mise à jour radiateur $radiatorId : ${sensorResponse.statusCode}");
-                }
-
-                // Envoyer via MQTT
-                final payload = utf8.encode(jsonEncode({
-                  "sensorId": radiatorId,
-                  "roomId": selectedCategory,
-                  "temperature": value
-                }));
-
-                String roomName = roomNames[selectedCategory] ?? "UnknownRoom";
-                client.publishMessage(
-                    "$roomName/$radiatorId/temperature",
-                    MqttQos.atLeastOnce,
-                    Uint8Buffer()..addAll(Uint8List.fromList(utf8.encode(jsonEncode({
-                      "roomName": roomName,
-                      "sensorName": radiatorId,
-                      "type": "temperature",
-                      "value": value
-                    }))))
-                );
-
-                print("📩 MQTT Message envoyé:$selectedCategory/$radiatorId/temperature -> $value");
-              }
-            }
-          }
-        } else {
-          print("❌ Erreur lors de la mise à jour de la température de la room: ${response.statusCode}");
-        }
-      } catch (e) {
-        print("❌ Erreur réseau lors de la mise à jour de la température: $e");
-      }
-
-      // Mettre à jour la température de tous les radiateurs dans la pièce
-      if (sensorsByRoom.containsKey(selectedCategory)) {
-        for (var sensor in sensorsByRoom[selectedCategory]!) {
-          if (sensor["type"] == "radiator") {
-            String radiatorId = sensor["id"];
-
-            // Mise à jour via API backend NestJS
-            var sensorUrl = Uri.parse('http://localhost:3000/sensors/$radiatorId');
-            var sensorResponse = await http.put(
-              sensorUrl,
-              headers: {"Content-Type": "application/json"},
-              body: jsonEncode({"value": value}),
-            );
-            if (sensorResponse.statusCode == 200) {
-              print("✅ Température du radiateur $radiatorId mise à jour dans la base");
-            } else {
-              print("❌ Erreur mise à jour radiateur $radiatorId : ${sensorResponse.statusCode}");
-            }
-
-            // Envoyer via MQTT
-            final payload = utf8.encode(jsonEncode({
-              "sensorId": radiatorId,
-              "roomId": selectedCategory,
-              "temperature": value
-            }));
-
-            client.publishMessage(
-                "$selectedCategory/radiator/temperature",
-                MqttQos.atLeastOnce,
-                Uint8Buffer()..addAll(Uint8List.fromList(payload))
-            );
-
-            print("📩 MQTT Message envoyé: $selectedCategory/radiator/temperature -> $value");
-          }
-        }
+        print("MQTT Message envoyé: $selectedCategory/temperature -> $value");
+      } else {
+        print("Erreur lors de la mise à jour de la température de la room: ${response.statusCode}");
       }
     } catch (e) {
-      print("❌ Erreur lors de la mise à jour de la température: $e");
+      print("Erreur réseau lors de la mise à jour de la température: $e");
     }
   }
 
@@ -399,9 +340,9 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
     }
 
     Directory tempDir = await getTemporaryDirectory();
-    _filePath = '${tempDir.path}/recording.m4a';  // 📌 Enregistre en `.m4a`
+    _filePath = '${tempDir.path}/recording.m4a';
 
-    await _recorder!.startRecorder(toFile: _filePath, codec: Codec.aacMP4); // 📌 `Codec.aacMP4`
+    await _recorder!.startRecorder(toFile: _filePath, codec: Codec.aacMP4);
     setState(() => _isRecording = true);
   }
 
@@ -412,21 +353,21 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
     print("✅ Enregistrement terminé : $_filePath");
 
     if (_filePath != null) {
-      // ✅ Envoi vers le serveur et copie locale simultanément
+
       await Future.wait([
-        _uploadAudio(_filePath!),  // Envoi du fichier au serveur
+        _uploadAudio(_filePath!),
       ]);
     }
   }
 
   Future<void> _uploadAudio(String filePath) async {
-    var url = Uri.parse('http://10.70.4.83:3000/speech/transcribe');  // Remplace par l'IP de ton PC si nécessaire
+    var url = Uri.parse('https://hackathon.vanhovev.com/speech/transcribe');
     print("test");
     var request = http.MultipartRequest('POST', url);
     request.files.add(await http.MultipartFile.fromPath(
       'file',
       filePath,
-      contentType: MediaType('audio', 'mpeg'),  // 📌 Utilise `audio/mpeg` pour MP3
+      contentType: MediaType('audio', 'mpeg'),
     ));
 
     try {
@@ -437,18 +378,24 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
         setState(() {
           _transcription = jsonResponse['transcription'] ?? "Transcription échouée.";
         });
-        print("✅ Audio transcrit : $_transcription");
+        print("Audio transcrit : $_transcription");
+        if (jsonResponse.containsKey('sensorName') && jsonResponse.containsKey('value')) {
+          String sensorName = jsonResponse['sensorName'];
+          bool isOn = jsonResponse['value'] == 1;
+
+          showStatusAlert(context, sensorName, isOn);
+        }
       } else {
         setState(() {
           _transcription = "Erreur lors de la transcription.";
         });
-        print("❌ Échec de la transcription : ${response.statusCode}");
+        print("Échec de la transcription : ${response.statusCode}");
       }
     } catch (e) {
       setState(() {
         _transcription = "Erreur de connexion au serveur.";
       });
-      print("❌ Erreur d'envoi : $e");
+      print("Erreur d'envoi : $e");
     }
   }
 
@@ -467,7 +414,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
         elevation: 0,
         backgroundColor: Colors.grey[100],
         title: const Text(
-          "Hi Arpan",
+          "Bonjour Kake",
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
         ),
         actions: [
@@ -493,7 +440,10 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 8.0),
                           child: GestureDetector(
                             onTap: () => setState(() {
-                              selectedCategory = roomId; // Toujours utiliser l'ID pour les sensors
+                              selectedCategory = roomId;
+                              heaterTemperature = roomTemperatures.containsKey(selectedCategory)
+                                  ? roomTemperatures[selectedCategory]!  // Utilise la dernière valeur réglée
+                                  : roomTemperatures[selectedCategory] ?? 20.0;  // Ou la valeur en base par défaut
                             }),
                             child: CategoryTab(
                               title: roomNames[roomId] ?? "Unknown", // Affiche le nom de la room
@@ -530,15 +480,54 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
                           return RadiatorDeviceCard(
                               sensor["topic"],
                               sensor["name"],
-                              double.tryParse(sensor["value"].toString()) ?? 20.0,  // ✅ Correction ici
-                              sensor["status"] == 1,
+                              heaterTemperature,
+                              sensor["value"] == 1,
                               Colors.redAccent,
                                   (newValue) {
                                 setState(() {
-                                  sensor["status"] = newValue ? 1 : 0;
+                                  sensor["value"] = newValue ? 1 : 0;
                                 });
                               },
-                              client
+                              client,
+                              sensor["id"],
+                          );
+                        } else if (sensor["type"] == "speaker") {
+                          return SpeakerDeviceCard(
+                            sensor["name"],
+                            sensor["value"] == 1, // Status basé sur la valeur du capteur
+                            Colors.blueAccent,
+                            "Enceinte",
+                            sensor.containsKey("unit") && sensor["unit"] != null
+                                ? "${double.tryParse(sensor["value"].toString()) ?? 0} ${sensor["unit"].toString().replaceAll("Â", "").trim()}"
+                                : "${double.tryParse(sensor["value"].toString()) ?? 0}",
+                          );
+                        } else if (sensor["type"] == "camera") {
+                          return CameraDeviceCard(
+                            sensor["id"],
+                            sensor["name"],
+                            sensor["value"] == 1, // Basé sur le champ value (1 = allumé, 0 = éteint)
+                            Colors.blueAccent,
+                                (newValue) {
+                              setState(() {
+                                sensor["value"] = newValue ? 1 : 0;
+                              });
+                            },
+                            client,
+                            sensor["topic"],
+                          );
+                        } else if (sensor["type"] == "fan") {
+                          return FanDeviceCard(
+                            sensor["id"],
+                            sensor["name"],
+                            sensor["value"] == 1, // Basé sur le champ value (1 = allumé, 0 = éteint)
+                            Colors.blueAccent,
+                            (newValue) {
+                              setState(() {
+                                sensor["value"] = newValue ? 1 : 0;
+                              });
+                            },
+                            client,
+                            sensor["topic"],
                           );
                         } else {
                           return DeviceCard(
@@ -549,7 +538,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
                             Colors.blue,
                             sensor.containsKey("unit") && sensor["unit"] != null
                                 ? "${double.tryParse(sensor["value"].toString()) ?? 0} ${sensor["unit"].toString().replaceAll("Â", "").trim()}"
-                                : "${double.tryParse(sensor["value"].toString()) ?? 0}", // ✅ Correction ici
+                                : "${double.tryParse(sensor["value"].toString()) ?? 0}",
                           );
                         }
                       }).toList()
@@ -570,7 +559,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
               ),
               child: Column(
                 children: [
-                  const Text("Adjust Heater Temperature", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text("Température de la pièce", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   Slider(
                     value: heaterTemperature,
                     min: 16,
@@ -627,3 +616,23 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
     );
   }
 }
+
+  void showStatusAlert(BuildContext context, String sensorName, bool isOn) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Statut mis à jour"),
+          content: Text("$sensorName est maintenant ${isOn ? 'allumé' : 'éteint'}"),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text("OK"),
+            ),
+          ],
+        );
+      },
+    );
+  }

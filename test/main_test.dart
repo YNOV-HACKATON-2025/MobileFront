@@ -8,6 +8,6 @@ void main() {
    // await tester.pumpWidget(const SmartHomeApp());
 
     expect(find.byType(SmartHomeScreen), findsOneWidget);
-    expect(find.text("Hi Arpan"), findsOneWidget);
+    expect(find.text("Hi Kake"), findsOneWidget);
   });
 }

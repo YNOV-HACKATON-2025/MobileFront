@@ -14,7 +14,7 @@ class _RegisterPageState extends State<RegisterPage> {
   bool isPasswordVisible = false;
 
   Future<void> register() async {
-    var url = Uri.parse('http://localhost:3000/authentification'); // Remplace par l'IP de ton backend si nécessaire
+    var url = Uri.parse('https://hackathon.vanhovev.com/authentification');
     try {
       var response = await http.post(
         url,
@@ -28,7 +28,6 @@ class _RegisterPageState extends State<RegisterPage> {
 
       if (response.statusCode == 201) { // 201 Created (réponse standard pour une inscription réussie)
         print("Inscription réussie : ${response.body}");
-        // TODO: Naviguer vers la page de connexion ou stocker un token si nécessaire
       } else {
         print("Erreur d'inscription : ${response.statusCode} - ${response.body}");
       }

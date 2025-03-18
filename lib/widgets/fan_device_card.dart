@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
-class LightDeviceCard extends StatelessWidget {
+class FanDeviceCard extends StatelessWidget {
   final String sensorId;
   final String title;
   final bool status;
@@ -14,7 +14,7 @@ class LightDeviceCard extends StatelessWidget {
   final MqttServerClient client;
   final String topic;
 
-  LightDeviceCard(this.sensorId, this.title, this.status, this.color, this.onToggle, this.client, this.topic);
+  FanDeviceCard(this.sensorId, this.title, this.status, this.color, this.onToggle, this.client, this.topic);
 
   void handleToggle(bool value) {
     onToggle(value);
@@ -41,12 +41,12 @@ class LightDeviceCard extends StatelessWidget {
       );
 
       if (response.statusCode == 200) {
-        print("Valeur du capteur $sensorId mise à jour dans la base");
+        print("Valeur du ventilateur $sensorId mise à jour dans la base");
       } else {
-        print("Erreur mise à jour capteur $sensorId : ${response.statusCode}");
+        print("Erreur mise à jour ventilateur $sensorId : ${response.statusCode}");
       }
     } catch (e) {
-      print("Erreur réseau lors de la mise à jour du capteur : $e");
+      print("Erreur réseau lors de la mise à jour du ventilateur : $e");
     }
   }
 
@@ -61,10 +61,10 @@ class LightDeviceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.lightbulb, size: 40, color: status ? color : Colors.grey),
+          Icon(Icons.air, size: 40, color: status ? color : Colors.grey), // ✅ Icône ventilateur
           const SizedBox(height: 10),
           Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const Text("Lumière", style: TextStyle(color: Colors.grey)),
+          const Text("Ventilateur", style: TextStyle(color: Colors.grey)), // ✅ Affichage du type
           const Spacer(),
           FlutterSwitch(
             width: 50,
@@ -72,7 +72,7 @@ class LightDeviceCard extends StatelessWidget {
             toggleSize: 20,
             value: status,
             borderRadius: 15,
-            activeColor: Colors.orange,
+            activeColor: Colors.blue,
             inactiveColor: Colors.grey,
             onToggle: handleToggle,
           ),
