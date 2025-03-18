@@ -85,14 +85,14 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
     print("test");
     var request = http.MultipartRequest('POST', url);
     request.files.add(await http.MultipartFile.fromPath(
-      'audio',
+      'file',
       filePath,
       contentType: MediaType('audio', 'mpeg'),  // 📌 Utilise `audio/mpeg` pour MP3
     ));
 
     try {
       var response = await request.send();
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         var responseBody = await response.stream.bytesToString();
         var jsonResponse = jsonDecode(responseBody);
         setState(() {
