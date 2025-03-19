@@ -362,7 +362,6 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
 
   Future<void> _uploadAudio(String filePath) async {
     var url = Uri.parse('https://hackathon.vanhovev.com/speech/transcribe');
-    print("test");
     var request = http.MultipartRequest('POST', url);
     request.files.add(await http.MultipartFile.fromPath(
       'file',
